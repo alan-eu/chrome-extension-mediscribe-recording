@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Google Meet Recorder",
+  "name": "Mediscribe Recorder",
   "description": "Record audio from a specific tab and stream it to a file",
   "version": "1.0",
   "background": {

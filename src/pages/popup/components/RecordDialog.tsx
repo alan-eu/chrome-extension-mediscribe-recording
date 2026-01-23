@@ -70,7 +70,7 @@ export const RecordDialog: React.FC = () => {
   return (
     <div style={{ padding: '20px', minWidth: '250px' }}>
       <div style={{ marginBottom: '15px' }}>
-        <h3>Google Meet Recorder</h3>
+        <h3>Mediscribe Recorder</h3>
       </div>
       
       <div style={{ marginBottom: '15px', fontSize: '12px', color: '#666' }}>

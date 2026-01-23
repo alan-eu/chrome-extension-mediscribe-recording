@@ -1,4 +1,4 @@
-# Google Meet Recorder Browser Extension
+# Mediscribe Recorder Browser Extension
 
 ## Description
 This browser extension records meetings and then opens the recorded file in a new tab.
@@ -40,10 +40,10 @@ yarn dev
 
 1. The Browser (Chrome) Extension is written in TypeScript and React
 2. Uses the best practices according to Browser Extension (offscreen, storing blob with 1-x hours of recording, etc.)
-3. When you click on "Start Recording" in a popup, the recording starts for Google Meet or any other tab such as Youtube (audio recording from Youtube video)
+3. When you click on "Start Recording" in a popup, the recording starts for Mediscribe or any other tab such as Youtube (audio recording from Youtube video)
     - Records audio from a tab where the recording has been started
-    - Record audio from the user (device), but only if has turned on microphone for Google Meet
+    - Record audio from the user (device), but only if has turned on microphone for Mediscribe
 4. When the tab is closed OR clicked on "Stop Recording", the recording is correctly finished
 5. After the recording is stopped
-    - A new tab with one audio file with combined tab recording and mic recording is opened to be able to save the file locally. **The file is exactly ONE and combines the audio from Google Meet and Mic recording too. IN JUST ONE FILE.**
+    - A new tab with one audio file with combined tab recording and mic recording is opened to be able to save the file locally. **The file is exactly ONE and combines the audio from Mediscribe and Mic recording too. IN JUST ONE FILE.**
     - All recoding of tabs and even mic are correctly stopped
