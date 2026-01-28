@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { encryptData, decryptData } from '../../utils/crypto';
 
 type UploadStatus = 'loading' | 'uploading' | 'success' | 'error';
 
@@ -35,20 +36,25 @@ const App: React.FC = () => {
     }
   };
 
-  async function uploadToS3ViaBackground(blob: Blob): Promise<string> {
+  async function uploadToS3ViaBackground(blob: Blob, encryptionKey: string): Promise<string> {
     console.log('[Upload] Starting S3 upload via background script, blob size:', blob.size);
 
     // Generate filename and S3 key
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `meeting-${timestamp}.webm`;
+    const filename = `meeting-${timestamp}.wav.enc`;
     const s3Key = `chrome-extension-audio-recordings/${filename}`;
 
     console.log('[Upload] Generated S3 key:', s3Key);
 
-    // Convert blob to array buffer to send to background
+    // Convert blob to array buffer
     console.log('[Upload] Converting blob to ArrayBuffer');
     const arrayBuffer = await blob.arrayBuffer();
     console.log('[Upload] ArrayBuffer size:', arrayBuffer.byteLength, 'bytes');
+
+    // Encrypt the data
+    console.log('[Upload] Encrypting data...');
+    const encryptedData = await encryptData(arrayBuffer, encryptionKey);
+    console.log('[Upload] Encrypted data size:', encryptedData.byteLength, 'bytes');
 
     // Send to background script
     console.log('[Upload] Sending message to background script');
@@ -56,9 +62,9 @@ const App: React.FC = () => {
       chrome.runtime.sendMessage({
         action: 'upload-to-s3',
         data: {
-          arrayBuffer: Array.from(new Uint8Array(arrayBuffer)),
+          arrayBuffer: Array.from(new Uint8Array(encryptedData)),
           s3Key,
-          contentType: 'audio/webm',
+          contentType: 'application/octet-stream',
           timestamp: new Date().toISOString()
         }
       }, (response) => {
@@ -125,17 +131,25 @@ const App: React.FC = () => {
           }
 
           try {
+            // Get encryption key from storage
+            console.log('[Upload] Getting encryption key from storage');
+            const config = await chrome.storage.sync.get(['encryptionKey']);
+
+            if (!config.encryptionKey) {
+              throw new Error('Encryption key not configured. Please configure it in settings.');
+            }
+
             console.log('[Upload] Setting status to uploading');
             setUploadState({
               status: 'uploading',
-              message: 'Uploading recording to S3...'
+              message: 'Encrypting and uploading recording to S3...'
             });
 
-            const s3Key = await uploadToS3ViaBackground(blob);
+            const s3Key = await uploadToS3ViaBackground(blob, config.encryptionKey);
 
             console.log('[Upload] Upload successful, setting success state');
 
-            // Store blob URL for later use
+            // Store blob URL for later use (unencrypted for playback)
             const url = URL.createObjectURL(blob);
             setBlobUrl(url);
 

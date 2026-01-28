@@ -24,13 +24,14 @@ yarn dev
    - Click "Load unpacked"
    - Select the `dist` folder
 
-3. Configure AWS credentials
+3. Configure AWS credentials and encryption
    - Click the extension icon → "⚙️ Settings"
    - Enter your AWS credentials:
      - **AWS Access Key ID**
      - **AWS Secret Access Key**
      - **AWS Region** (default: eu-west-3)
      - **S3 Bucket Name** (default: occupational-health-medical-conversation-recordings)
+     - **Encryption Key** (required - used for AES-256-CBC encryption before upload)
    - **Note:** AWS credentials can be found in [AWS Secret Manager](https://eu-central-1.console.aws.amazon.com/secretsmanager/secret?name=medical-conversation-recordings-uploader-creds&region=eu-central-1)
 
 ## Usage
@@ -42,7 +43,7 @@ yarn dev
 5. Click "Stop Recording" when done
 6. The upload page opens showing upload progress
 7. Click "🎵 Open Recording" to listen to the recording
-8. The recording is automatically uploaded to S3 at: `s3://[your-bucket]/chrome-extension-audio-recordings/meeting-[timestamp].webm`
+8. The recording is automatically encrypted and uploaded to S3 at: `s3://[your-bucket]/chrome-extension-audio-recordings/meeting-[timestamp].wav.enc`
 
 ## Package for Distribution
 
@@ -103,15 +104,39 @@ Share `mediscribe-recorder.zip` with testers who can:
 1. Extension creates an offscreen document to access `getUserMedia` API
 2. Captures tab audio using `chrome.tabCapture` API
 3. Optionally captures microphone audio
-4. Uses Web Audio API (`AudioContext`) to mix both streams
-5. Records the mixed stream using `MediaRecorder` API (WebM format)
-6. Stores the blob in IndexedDB temporarily
+4. Uses Web Audio API (`AudioContext`) to mix both streams into mono
+5. Records audio using `ScriptProcessorNode` to capture raw PCM data
+6. Encodes audio to PCM 16-bit 16kHz WAV format
+7. Stores the blob in IndexedDB temporarily
+8. Closes offscreen document after recording completes to free resources
 
 ### Upload Process
 1. Upload page retrieves blob from IndexedDB
-2. Sends blob data to background script via message passing
-3. Background script uses AWS SDK to upload to S3
-4. File is stored at: `chrome-extension-audio-recordings/meeting-[timestamp].webm`
+2. Encrypts audio using AES-256-CBC with PBKDF2 key derivation (OpenSSL compatible)
+3. Sends encrypted blob data to background script via message passing
+4. Background script uses AWS SDK to upload to S3
+5. File is stored at: `chrome-extension-audio-recordings/meeting-[timestamp].wav.enc`
+
+### Encryption
+- **Algorithm**: AES-256-CBC with PBKDF2 key derivation
+- **Compatible with**: `openssl enc -aes-256-cbc -salt -pbkdf2 -k password -d`
+- **Format**: OpenSSL format with "Salted__" header + 8-byte salt + encrypted data
+- **PBKDF2 iterations**: 10,000 with SHA-256
+- Files uploaded to S3 are encrypted before transmission
+- The "Open Recording" button plays the unencrypted local copy for verification
+
+#### Decrypting files from S3
+To decrypt downloaded files using OpenSSL:
+```bash
+# Download from S3
+aws s3 cp s3://your-bucket/chrome-extension-audio-recordings/meeting-2026-01-28.wav.enc .
+
+# Decrypt using OpenSSL
+openssl enc -aes-256-cbc -salt -pbkdf2 -d -k YOUR_ENCRYPTION_KEY -in meeting-2026-01-28.wav.enc -out meeting-2026-01-28.wav
+
+# Play the decrypted file
+ffplay meeting-2026-01-28.wav
+```
 
 ### Permissions Required
 - `activeTab` - Access to current tab

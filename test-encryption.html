@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Encryption Compatibility</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 10px 5px;
+      cursor: pointer;
+    }
+    .output {
+      background: #f5f5f5;
+      padding: 15px;
+      margin-top: 20px;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    input {
+      padding: 8px;
+      margin: 10px 0;
+      width: 300px;
+    }
+  </style>
+</head>
+<body>
+  <h1>OpenSSL Encryption Compatibility Test</h1>
+
+  <div>
+    <h2>Test Encryption/Decryption</h2>
+    <input type="password" id="password" placeholder="Enter password" value="testpassword123">
+    <br>
+    <button onclick="testEncryption()">Test Encrypt/Decrypt</button>
+    <button onclick="downloadEncrypted()">Download Encrypted File</button>
+  </div>
+
+  <div class="output" id="output">Results will appear here...</div>
+
+  <script type="module">
+    // Inline the crypto functions for testing
+    const PBKDF2_ITERATIONS = 10000;
+    const KEY_SIZE = 32;
+    const IV_SIZE = 16;
+
+    async function deriveKeyAndIV(password, salt) {
+      const encoder = new TextEncoder();
+      const passwordBuffer = encoder.encode(password);
+
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        passwordBuffer,
+        'PBKDF2',
+        false,
+        ['deriveBits']
+      );
+
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: salt.buffer,
+          iterations: PBKDF2_ITERATIONS,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        (KEY_SIZE + IV_SIZE) * 8
+      );
+
+      const derivedArray = new Uint8Array(derivedBits);
+      const keyBytes = derivedArray.slice(0, KEY_SIZE);
+      const iv = derivedArray.slice(KEY_SIZE, KEY_SIZE + IV_SIZE);
+
+      const key = await crypto.subtle.importKey(
+        'raw',
+        keyBytes,
+        { name: 'AES-CBC', length: 256 },
+        false,
+        ['encrypt', 'decrypt']
+      );
+
+      return { key, iv };
+    }
+
+    async function encryptData(data, password) {
+      const salt = crypto.getRandomValues(new Uint8Array(8));
+      const { key, iv } = await deriveKeyAndIV(password, salt);
+
+      const encryptedData = await crypto.subtle.encrypt(
+        { name: 'AES-CBC', iv: iv.buffer },
+        key,
+        data
+      );
+
+      const salted = new TextEncoder().encode('Salted__');
+      const result = new Uint8Array(
+        salted.length + salt.length + encryptedData.byteLength
+      );
+      result.set(salted, 0);
+      result.set(salt, salted.length);
+      result.set(new Uint8Array(encryptedData), salted.length + salt.length);
+
+      return result.buffer;
+    }
+
+    async function decryptData(encryptedData, password) {
+      const dataArray = new Uint8Array(encryptedData);
+
+      const saltedHeader = new TextDecoder().decode(dataArray.slice(0, 8));
+      if (saltedHeader !== 'Salted__') {
+        throw new Error('Invalid encrypted data format');
+      }
+
+      const salt = dataArray.slice(8, 16);
+      const encrypted = dataArray.slice(16);
+
+      const { key, iv } = await deriveKeyAndIV(password, salt);
+
+      const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-CBC', iv: iv.buffer },
+        key,
+        encrypted
+      );
+
+      return decrypted;
+    }
+
+    window.testEncryption = async function() {
+      const output = document.getElementById('output');
+      const password = document.getElementById('password').value;
+
+      try {
+        output.textContent = 'Testing encryption/decryption...\n\n';
+
+        // Test data
+        const testText = 'Hello, World! This is a test of OpenSSL-compatible encryption.';
+        const testData = new TextEncoder().encode(testText);
+        output.textContent += `Original text: ${testText}\n`;
+        output.textContent += `Original size: ${testData.length} bytes\n\n`;
+
+        // Encrypt
+        const encrypted = await encryptData(testData.buffer, password);
+        output.textContent += `Encrypted size: ${encrypted.byteLength} bytes\n`;
+        output.textContent += `Encrypted (hex): ${Array.from(new Uint8Array(encrypted)).map(b => b.toString(16).padStart(2, '0')).join('')}\n\n`;
+
+        // Decrypt
+        const decrypted = await decryptData(encrypted, password);
+        const decryptedText = new TextDecoder().decode(decrypted);
+        output.textContent += `Decrypted text: ${decryptedText}\n`;
+        output.textContent += `Decrypted size: ${decrypted.byteLength} bytes\n\n`;
+
+        // Verify
+        if (testText === decryptedText) {
+          output.textContent += '✅ SUCCESS! Encryption/decryption works correctly.\n\n';
+          output.textContent += 'To test with OpenSSL:\n';
+          output.textContent += '1. Click "Download Encrypted File"\n';
+          output.textContent += '2. Run: openssl enc -aes-256-cbc -salt -pbkdf2 -d -k "' + password + '" -in test-encrypted.bin\n';
+          output.textContent += '3. Verify the output matches the original text\n';
+        } else {
+          output.textContent += '❌ ERROR! Decrypted text does not match original.\n';
+        }
+      } catch (error) {
+        output.textContent += `❌ ERROR: ${error.message}\n`;
+      }
+    };
+
+    window.downloadEncrypted = async function() {
+      const password = document.getElementById('password').value;
+      const testText = 'Hello, World! This is a test of OpenSSL-compatible encryption.';
+      const testData = new TextEncoder().encode(testText);
+
+      const encrypted = await encryptData(testData.buffer, password);
+      const blob = new Blob([encrypted], { type: 'application/octet-stream' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'test-encrypted.bin';
+      a.click();
+
+      URL.revokeObjectURL(url);
+    };
+  </script>
+</body>
+</html>

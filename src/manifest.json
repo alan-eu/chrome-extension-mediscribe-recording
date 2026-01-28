@@ -15,7 +15,10 @@
     "offscreen"
   ],
   "host_permissions": [
-    "http://localhost/*"
+    "http://localhost/*",
+    "http://*.doctolib.fr/*",
+    "http://meet.google.com/*",
+    "http://youtube.com/*"
   ],
   "action": {
     "default_icon": {

@@ -5,7 +5,8 @@ const App: React.FC = () => {
     awsAccessKeyId: '',
     awsSecretAccessKey: '',
     awsRegion: 'eu-west-3',
-    s3Bucket: 'occupational-health-medical-conversation-recordings'
+    s3Bucket: 'occupational-health-medical-conversation-recordings',
+    encryptionKey: ''
   });
   const [status, setStatus] = useState<{ show: boolean; type: 'success' | 'error'; message: string }>({
     show: false,
@@ -20,14 +21,16 @@ const App: React.FC = () => {
       'awsAccessKeyId',
       'awsSecretAccessKey',
       'awsRegion',
-      's3Bucket'
+      's3Bucket',
+      'encryptionKey'
     ], (result) => {
       if (result.awsAccessKeyId) {
         setConfig({
           awsAccessKeyId: result.awsAccessKeyId || '',
           awsSecretAccessKey: result.awsSecretAccessKey || '',
           awsRegion: result.awsRegion || 'eu-west-3',
-          s3Bucket: result.s3Bucket || 'occupational-health-medical-conversation-recordings'
+          s3Bucket: result.s3Bucket || 'occupational-health-medical-conversation-recordings',
+          encryptionKey: result.encryptionKey || ''
         });
       }
     });
@@ -116,6 +119,18 @@ const App: React.FC = () => {
             required
           />
           <div className="help-text">The name of your S3 bucket for storing recordings</div>
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="encryptionKey">Encryption Key</label>
+          <input
+            type="password"
+            id="encryptionKey"
+            value={config.encryptionKey}
+            onChange={(e) => handleChange('encryptionKey', e.target.value)}
+            required
+          />
+          <div className="help-text">Encryption key for AES-256-CBC encryption (used before uploading to S3)</div>
         </div>
 
         <button type="submit" disabled={loading}>
