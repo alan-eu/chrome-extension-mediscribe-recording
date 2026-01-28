@@ -4,14 +4,18 @@ export const RecordDialog: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<string>('');
+  const [settingsError, setSettingsError] = useState<string>('');
 
   useEffect(() => {
     chrome.storage.session.get('recording', (result) => {
       setIsRecording(result.recording);
     });
-    
+
     // Check microphone permission status
     checkMicrophonePermission();
+
+    // Check if settings are configured
+    checkSettings();
   }, []);
 
   const checkMicrophonePermission = async () => {
@@ -24,9 +28,38 @@ export const RecordDialog: React.FC = () => {
     }
   };
 
+  const checkSettings = async () => {
+    console.log('[Popup] Checking settings configuration');
+
+    chrome.storage.sync.get([
+      'awsAccessKeyId',
+      'awsSecretAccessKey',
+      'awsRegion',
+      's3Bucket',
+      'encryptionKey'
+    ], (config) => {
+      const missingSettings: string[] = [];
+
+      if (!config.awsAccessKeyId) missingSettings.push('AWS Access Key ID');
+      if (!config.awsSecretAccessKey) missingSettings.push('AWS Secret Access Key');
+      if (!config.awsRegion) missingSettings.push('AWS Region');
+      if (!config.s3Bucket) missingSettings.push('S3 Bucket');
+      if (!config.encryptionKey) missingSettings.push('Encryption Key');
+
+      if (missingSettings.length > 0) {
+        const error = `Missing settings: ${missingSettings.join(', ')}`;
+        console.error('[Popup]', error);
+        setSettingsError(error);
+      } else {
+        console.log('[Popup] All settings configured');
+        setSettingsError('');
+      }
+    });
+  };
+
   const handleRecordClick = async () => {
     if (isRecording) {
-      console.log('Attempting to stop recording');
+      console.log('[Popup] Attempting to stop recording');
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const currentTab = tabs[0];
         if (currentTab.id) {
@@ -38,8 +71,16 @@ export const RecordDialog: React.FC = () => {
         }
       });
     } else {
+      // Check settings before starting recording
+      if (settingsError) {
+        console.error('[Popup] Cannot start recording, settings not configured');
+        alert('Please configure all settings before recording.\n\n' + settingsError);
+        return;
+      }
+
+      console.log('[Popup] Starting recording');
       setIsChecking(true);
-      
+
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const currentTab = tabs[0];
         if (currentTab.id) {
@@ -96,18 +137,25 @@ export const RecordDialog: React.FC = () => {
         {getPermissionStatusText()}
       </div>
 
+      {settingsError && (
+        <div style={{ marginBottom: '15px', fontSize: '12px', color: '#f44336', backgroundColor: '#ffebee', padding: '8px', borderRadius: '4px' }}>
+          ⚠️ {settingsError}
+        </div>
+      )}
+
       <div>
         <button
           onClick={handleRecordClick}
-          disabled={isChecking}
+          disabled={isChecking || (!isRecording && !!settingsError)}
           style={{
             width: '100%',
             padding: '10px',
-            backgroundColor: isRecording ? '#f44336' : '#4CAF50',
+            backgroundColor: isRecording ? '#f44336' : (settingsError ? '#ccc' : '#4CAF50'),
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: isChecking ? 'not-allowed' : 'pointer'
+            cursor: (isChecking || (!isRecording && !!settingsError)) ? 'not-allowed' : 'pointer',
+            opacity: (!isRecording && settingsError) ? 0.6 : 1
           }}
         >
           {isChecking ? 'Checking permissions...' :
@@ -118,6 +166,12 @@ export const RecordDialog: React.FC = () => {
       {permissionStatus === 'denied' && (
         <div style={{ marginTop: '10px', fontSize: '12px', color: '#f44336' }}>
           Please enable microphone access in Chrome settings to record audio.
+        </div>
+      )}
+
+      {settingsError && (
+        <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
+          Click "⚙️ Settings" to configure AWS credentials and encryption key.
         </div>
       )}
     </div>
