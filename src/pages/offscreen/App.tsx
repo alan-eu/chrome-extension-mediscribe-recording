@@ -33,6 +33,9 @@ const App: React.FC = () => {
 
   let recorder: MediaRecorder | undefined;
   let data: Blob[] = [];
+  let tabMedia: MediaStream | undefined;
+  let micMedia: MediaStream | undefined;
+  let audioContext: AudioContext | undefined;
 
   // Test if microphone access is available
   async function testMicrophoneAccess(): Promise<boolean> {
@@ -46,12 +49,37 @@ const App: React.FC = () => {
     }
   }
 
+  async function saveBlobToIndexedDB(blob: Blob): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open('RecordingDB', 1);
+
+      request.onerror = () => reject(request.error);
+
+      request.onsuccess = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = db.transaction(['recordings'], 'readwrite');
+        const objectStore = transaction.objectStore('recordings');
+        const putRequest = objectStore.put(blob, 'latest');
+
+        putRequest.onsuccess = () => resolve();
+        putRequest.onerror = () => reject(putRequest.error);
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains('recordings')) {
+          db.createObjectStore('recordings');
+        }
+      };
+    });
+  }
+
   async function startRecording(streamId: string, orgId: string, micStreamId: string) {
     if (recorder?.state === 'recording') {
       throw new Error('Called startRecording while recording is in progress.');
     }
 
-    const media = await navigator.mediaDevices.getUserMedia({
+    tabMedia = await navigator.mediaDevices.getUserMedia({
       audio: {
         mandatory: {
           chromeMediaSource: 'tab',
@@ -60,10 +88,9 @@ const App: React.FC = () => {
       },
       video: false,
     } as any);
-    console.error('OFFSCREEN media', media);
+    console.error('OFFSCREEN media', tabMedia);
 
     // Try to get microphone access for recording
-    let micMedia: MediaStream | undefined;
     try {
       micMedia = await navigator.mediaDevices.getUserMedia({
         audio: true, // Request actual microphone, not tab audio
@@ -72,26 +99,27 @@ const App: React.FC = () => {
       console.log('OFFSCREEN microphone access granted', micMedia);
     } catch (error) {
       console.log('OFFSCREEN microphone access failed:', error);
+      micMedia = undefined;
       // Continue without microphone - just record tab audio
     }
 
     // Continue to play the captured audio to the user.
-    const output = new AudioContext();
-    const source = output.createMediaStreamSource(media);
+    audioContext = new AudioContext();
+    const source = audioContext.createMediaStreamSource(tabMedia);
 
-    const destination = output.createMediaStreamDestination();
+    const destination = audioContext.createMediaStreamDestination();
 
-    source.connect(output.destination);
+    source.connect(audioContext.destination);
     source.connect(destination);
 
     // If we have microphone access, mix it in
     if (micMedia) {
-      const micSource = output.createMediaStreamSource(micMedia);
+      const micSource = audioContext.createMediaStreamSource(micMedia);
       micSource.connect(destination);
       console.log('OFFSCREEN microphone mixed into recording');
     }
 
-    console.error('OFFSCREEN output', output);
+    console.error('OFFSCREEN output', audioContext);
 
     // Start recording.
     recorder = new MediaRecorder(destination.stream, { mimeType: 'video/webm' });
@@ -105,7 +133,32 @@ const App: React.FC = () => {
         recording: false,
       });
 
-      window.open(URL.createObjectURL(blob), '_blank');
+      try {
+        // Save blob to IndexedDB
+        await saveBlobToIndexedDB(blob);
+        console.log('Blob saved to IndexedDB');
+
+        // Open upload page which will handle the S3 upload
+        window.open(chrome.runtime.getURL('pages/upload/index.html'), '_blank');
+      } catch (error) {
+        console.error('Failed to save blob:', error);
+        // Fallback to just opening the blob
+        window.open(URL.createObjectURL(blob), '_blank');
+      }
+
+      // Clean up all media streams and audio context
+      if (tabMedia) {
+        tabMedia.getTracks().forEach(track => track.stop());
+        tabMedia = undefined;
+      }
+      if (micMedia) {
+        micMedia.getTracks().forEach(track => track.stop());
+        micMedia = undefined;
+      }
+      if (audioContext) {
+        audioContext.close();
+        audioContext = undefined;
+      }
 
       // Clear state ready for next recording
       recorder = undefined;
@@ -134,6 +187,17 @@ const App: React.FC = () => {
 
     // Stopping the tracks makes sure the recording icon in the tab is removed.
     recorder?.stream.getTracks().forEach((t: MediaStreamTrack) => t.stop());
+
+    // Also clean up the original media streams
+    if (tabMedia) {
+      tabMedia.getTracks().forEach(track => track.stop());
+    }
+    if (micMedia) {
+      micMedia.getTracks().forEach(track => track.stop());
+    }
+    if (audioContext) {
+      audioContext.close();
+    }
 
     // Update current state in URL
     window.location.hash = '';

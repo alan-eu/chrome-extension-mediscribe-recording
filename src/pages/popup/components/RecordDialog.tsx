@@ -67,18 +67,37 @@ export const RecordDialog: React.FC = () => {
     }
   };
 
+  const handleSettingsClick = () => {
+    chrome.runtime.openOptionsPage();
+  };
+
   return (
     <div style={{ padding: '20px', minWidth: '250px' }}>
-      <div style={{ marginBottom: '15px' }}>
-        <h3>Mediscribe Recorder</h3>
+      <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h3 style={{ margin: 0 }}>Mediscribe Recorder</h3>
+        <button
+          onClick={handleSettingsClick}
+          style={{
+            padding: '5px 10px',
+            backgroundColor: '#666',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px'
+          }}
+          title="Settings"
+        >
+          ⚙️ Settings
+        </button>
       </div>
-      
+
       <div style={{ marginBottom: '15px', fontSize: '12px', color: '#666' }}>
         {getPermissionStatusText()}
       </div>
-      
+
       <div>
-        <button 
+        <button
           onClick={handleRecordClick}
           disabled={isChecking}
           style={{
@@ -91,11 +110,11 @@ export const RecordDialog: React.FC = () => {
             cursor: isChecking ? 'not-allowed' : 'pointer'
           }}
         >
-          {isChecking ? 'Checking permissions...' : 
+          {isChecking ? 'Checking permissions...' :
            isRecording ? 'Stop Recording' : 'Start Recording'}
         </button>
       </div>
-      
+
       {permissionStatus === 'denied' && (
         <div style={{ marginTop: '10px', fontSize: '12px', color: '#f44336' }}>
           Please enable microphone access in Chrome settings to record audio.

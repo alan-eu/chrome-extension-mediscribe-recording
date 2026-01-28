@@ -8,6 +8,7 @@ import { emptyDir } from 'rollup-plugin-empty-dir'
 import zip from 'rollup-plugin-zip'
 import replace from '@rollup/plugin-replace'
 import copy from 'rollup-plugin-copy'
+import json from '@rollup/plugin-json'
 
 const isProduction = process.env.NODE_ENV === 'production'
 
@@ -28,7 +29,11 @@ export default {
     }),
     chromeExtension(),
     simpleReloader(),
-    resolve(),
+    json(),
+    resolve({
+      preferBuiltins: false,
+      browser: true
+    }),
     commonjs(),
     typescript(),
     babel({

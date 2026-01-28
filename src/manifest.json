@@ -34,10 +34,11 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["pages/offscreen/index.html", "pages/permission/index.html"],
+      "resources": ["pages/offscreen/index.html", "pages/permission/index.html", "pages/upload/index.html", "pages/settings/index.html"],
       "matches": ["<all_urls>"]
     }
   ],
+  "options_page": "pages/settings/index.html",
   "icons": {
     "48": "assets/icons/64.png",
     "64": "assets/icons/64.png",
