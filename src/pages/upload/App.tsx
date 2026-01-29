@@ -36,12 +36,12 @@ const App: React.FC = () => {
     }
   };
 
-  async function uploadToS3ViaBackground(blob: Blob, encryptionKey: string): Promise<string> {
+  async function uploadToS3ViaBackground(blob: Blob, encryptionKey: string, healthProfessionalId: string): Promise<string> {
     console.log('[Upload] Starting S3 upload via background script, blob size:', blob.size);
 
-    // Generate filename and S3 key
+    // Generate filename and S3 key using health professional ID and timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `meeting-${timestamp}.wav.enc`;
+    const filename = `${healthProfessionalId}_${timestamp}.wav.enc`;
     const s3Key = `chrome-extension-audio-recordings/${filename}`;
 
     console.log('[Upload] Generated S3 key:', s3Key);
@@ -131,12 +131,16 @@ const App: React.FC = () => {
           }
 
           try {
-            // Get encryption key from storage
-            console.log('[Upload] Getting encryption key from storage');
-            const config = await chrome.storage.sync.get(['encryptionKey']);
+            // Get encryption key and health professional ID from storage
+            console.log('[Upload] Getting config from storage');
+            const config = await chrome.storage.sync.get(['encryptionKey', 'healthProfessionalId']);
 
             if (!config.encryptionKey) {
               throw new Error('Encryption key not configured. Please configure it in settings.');
+            }
+
+            if (!config.healthProfessionalId) {
+              throw new Error('Health Professional ID not configured. Please configure it in settings.');
             }
 
             console.log('[Upload] Setting status to uploading');
@@ -145,7 +149,7 @@ const App: React.FC = () => {
               message: 'Encrypting and uploading recording to S3...'
             });
 
-            const s3Key = await uploadToS3ViaBackground(blob, config.encryptionKey);
+            const s3Key = await uploadToS3ViaBackground(blob, config.encryptionKey, config.healthProfessionalId);
 
             console.log('[Upload] Upload successful, setting success state');
 

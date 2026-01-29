@@ -32,6 +32,7 @@ export const RecordDialog: React.FC = () => {
     console.log('[Popup] Checking settings configuration');
 
     chrome.storage.sync.get([
+      'healthProfessionalId',
       'awsAccessKeyId',
       'awsSecretAccessKey',
       'awsRegion',
@@ -40,6 +41,7 @@ export const RecordDialog: React.FC = () => {
     ], (config) => {
       const missingSettings: string[] = [];
 
+      if (!config.healthProfessionalId) missingSettings.push('Health Professional ID');
       if (!config.awsAccessKeyId) missingSettings.push('AWS Access Key ID');
       if (!config.awsSecretAccessKey) missingSettings.push('AWS Secret Access Key');
       if (!config.awsRegion) missingSettings.push('AWS Region');

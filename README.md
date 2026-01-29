@@ -3,32 +3,26 @@
 ## Description
 This browser extension records audio from browser tabs (and optionally microphone) and uploads the recordings to AWS S3. The extension captures tab audio, mixes it with microphone input if available, and automatically uploads the recording to a configured S3 bucket.
 
-## Prerequisites
+## Installation for Users
 
-- Node v20+
-- yarn v1.x
-- AWS S3 bucket with appropriate permissions
-- AWS credentials (Access Key ID and Secret Access Key)
+1. Get the extension zip file
+   - Ask the Occupational Health on-call team for the `mediscribe-recorder.zip` file
 
-## Installation for Development
-
-1. Install dependencies and run the project
-```bash
-yarn install
-yarn dev
-```
-
-2. Load the extension in Chrome
+2. Install the extension in Chrome
    - Open Chrome and go to `chrome://extensions/`
    - Enable "Developer mode" (toggle in top-right)
-   - Click "Load unpacked"
-   - Select the `dist` folder
+   - Drag and drop the zip file onto the page (or extract and use "Load unpacked")
 
-3. Configure AWS credentials and encryption
-   - Click the extension icon → "⚙️ Settings"
-   - Enter your AWS credentials:
-     - **AWS Access Key ID**
-     - **AWS Secret Access Key**
+3. Open the Settings page
+   - Click the extension icon in the toolbar, then click "⚙️ Settings"
+   
+   ![Extension Settings](docs/extension-settings.png)
+
+4. Configure settings
+   - Enter your credentials:
+     - **Health Professional ID** (required - your unique identifier, used in recording filenames)
+     - **AWS Access Key ID** (required - see [medical-conversation-recordings-uploader-creds](https://eu-west-3.console.aws.amazon.com/secretsmanager/secret?name=medical-conversation-recordings-uploader-creds&region=eu-west-3))
+     - **AWS Secret Access Key** (required - see [medical-conversation-recordings-uploader-creds](https://eu-west-3.console.aws.amazon.com/secretsmanager/secret?name=medical-conversation-recordings-uploader-creds&region=eu-west-3))
      - **AWS Region** (default: eu-west-3)
      - **S3 Bucket Name** (default: occupational-health-medical-conversation-recordings)
      - **Encryption Key** (required - used for AES-256-CBC encryption before upload)
@@ -43,7 +37,32 @@ yarn dev
 5. Click "Stop Recording" when done
 6. The upload page opens showing upload progress
 7. Click "🎵 Open Recording" to listen to the recording
-8. The recording is automatically encrypted and uploaded to S3 at: `s3://[your-bucket]/chrome-extension-audio-recordings/meeting-[timestamp].wav.enc`
+8. The recording is automatically encrypted and uploaded to S3 at: `s3://[your-bucket]/chrome-extension-audio-recordings/[health-professional-id]-[timestamp].wav.enc`
+
+## Installation for Developers
+
+### Prerequisites
+
+- Node v20+
+- yarn v1.x
+- AWS S3 bucket with appropriate permissions
+- AWS credentials (Access Key ID and Secret Access Key)
+
+### Setup
+
+1. Install dependencies and run the project
+```bash
+yarn install
+yarn dev
+```
+
+2. Load the extension in Chrome
+   - Open Chrome and go to `chrome://extensions/`
+   - Enable "Developer mode" (toggle in top-right)
+   - Click "Load unpacked"
+   - Select the `dist` folder
+
+3. Configure AWS credentials and encryption (see "Installation for Users" section above)
 
 ## Package for Distribution
 
@@ -54,10 +73,7 @@ yarn build
 cd dist && zip -r ../mediscribe-recorder.zip . && cd ..
 ```
 
-Share `mediscribe-recorder.zip` with testers who can:
-1. Go to `chrome://extensions/`
-2. Enable "Developer mode"
-3. Drag and drop the zip file onto the page (or extract and use "Load unpacked")
+Share `mediscribe-recorder.zip` with testers who can follow the "Installation for Users" instructions above.
 
 ## Project Structure
 
@@ -115,7 +131,7 @@ Share `mediscribe-recorder.zip` with testers who can:
 2. Encrypts audio using AES-256-CBC with PBKDF2 key derivation (OpenSSL compatible)
 3. Sends encrypted blob data to background script via message passing
 4. Background script uses AWS SDK to upload to S3
-5. File is stored at: `chrome-extension-audio-recordings/meeting-[timestamp].wav.enc`
+5. File is stored at: `chrome-extension-audio-recordings/[health-professional-id]-[timestamp].wav.enc`
 
 ### Encryption
 - **Algorithm**: AES-256-CBC with PBKDF2 key derivation
@@ -129,13 +145,13 @@ Share `mediscribe-recorder.zip` with testers who can:
 To decrypt downloaded files using OpenSSL:
 ```bash
 # Download from S3
-aws s3 cp s3://your-bucket/chrome-extension-audio-recordings/meeting-2026-01-28.wav.enc .
+aws s3 cp s3://your-bucket/chrome-extension-audio-recordings/HP001-2026-01-28T14-30-00-000Z.wav.enc .
 
 # Decrypt using OpenSSL
-openssl enc -aes-256-cbc -salt -pbkdf2 -d -k YOUR_ENCRYPTION_KEY -in meeting-2026-01-28.wav.enc -out meeting-2026-01-28.wav
+openssl enc -aes-256-cbc -salt -pbkdf2 -d -k YOUR_ENCRYPTION_KEY -in HP001-2026-01-28T14-30-00-000Z.wav.enc -out HP001-2026-01-28T14-30-00-000Z.wav
 
 # Play the decrypted file
-ffplay meeting-2026-01-28.wav
+ffplay HP001-2026-01-28T14-30-00-000Z.wav
 ```
 
 ### Permissions Required

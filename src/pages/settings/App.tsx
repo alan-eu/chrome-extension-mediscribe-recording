@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 
 const App: React.FC = () => {
   const [config, setConfig] = useState({
+    healthProfessionalId: '',
     awsAccessKeyId: '',
     awsSecretAccessKey: '',
     awsRegion: 'eu-west-3',
@@ -18,14 +19,16 @@ const App: React.FC = () => {
   useEffect(() => {
     // Load existing config
     chrome.storage.sync.get([
+      'healthProfessionalId',
       'awsAccessKeyId',
       'awsSecretAccessKey',
       'awsRegion',
       's3Bucket',
       'encryptionKey'
     ], (result) => {
-      if (result.awsAccessKeyId) {
+      if (result.awsAccessKeyId || result.healthProfessionalId) {
         setConfig({
+          healthProfessionalId: result.healthProfessionalId || '',
           awsAccessKeyId: result.awsAccessKeyId || '',
           awsSecretAccessKey: result.awsSecretAccessKey || '',
           awsRegion: result.awsRegion || 'eu-west-3',
@@ -72,6 +75,21 @@ const App: React.FC = () => {
       <p>Configure your AWS credentials for uploading recordings to S3.</p>
 
       <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label htmlFor="healthProfessionalId">Health Professional ID</label>
+          <input
+            type="text"
+            id="healthProfessionalId"
+            value={config.healthProfessionalId}
+            onChange={(e) => handleChange('healthProfessionalId', e.target.value)}
+            required
+          />
+          <div className="help-text">
+            Your unique health professional identifier (used in recording filenames).
+            Find your ID at <a href="https://api-medical-secrecy.alan.com/admin/occupationalhealthhealthprofessional/" target="_blank" rel="noopener noreferrer">Health Professional Admin</a>
+          </div>
+        </div>
+
         <div className="form-group">
           <label htmlFor="awsAccessKeyId">AWS Access Key ID</label>
           <input
