@@ -244,9 +244,9 @@ const App: React.FC = () => {
     splitter.connect(merger, 0, 0);
     splitter.connect(merger, 1, 1);
 
-    // Play audio to user
-    source.connect(audioContext.destination);
-    console.log('[Offscreen] Tab audio connected to speakers for monitoring');
+    // Note: We intentionally do NOT connect source to audioContext.destination
+    // to avoid playing back the audio through speakers (which causes echo/delay)
+    console.log('[Offscreen] Tab audio NOT connected to speakers (no playback)');
 
     // If we have microphone access, mix it in
     if (micMedia) {
@@ -305,9 +305,15 @@ const App: React.FC = () => {
     };
 
     gainNode.connect(scriptProcessor);
-    scriptProcessor.connect(audioContext.destination);
+    
+    // Connect scriptProcessor to a silent gain node instead of destination
+    // This allows audio processing without playback (avoids echo/delay)
+    const silentGain = audioContext.createGain();
+    silentGain.gain.value = 0;
+    scriptProcessor.connect(silentGain);
+    silentGain.connect(audioContext.destination);
 
-    console.log('[Offscreen] Audio processing pipeline connected and ready');
+    console.log('[Offscreen] Audio processing pipeline connected (no playback)');
 
     // Store a flag to indicate recording is active
     const isRecording = { value: true };
