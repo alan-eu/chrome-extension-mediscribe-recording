@@ -6,6 +6,20 @@ We're excited to announce the first release of **Mediscribe Recorder**, a Chrome
 
 ---
 
+## 🐛 Bug Fixes (v1.0.1)
+
+### Audio Fix for Video Calls
+- **Fixed**: Audio not heard by other participants during recording in video calls
+- **Cause**: Tab audio captured via `chrome.tabCapture` was being intercepted but not played back to speakers
+- **Solution**: Connected tab audio source to `audioContext.destination` to ensure captured audio continues playing while being recorded
+
+### Extension Icon Visibility
+- **Fixed**: Extension icon was hard to find in toolbar after stopping a recording
+- **Cause**: The extension used a dim "not-recording.png" icon after the first recording stopped
+- **Solution**: Now uses the main branded icon (`assets/icons/32.png`) when not recording, matching the default icon shown on first launch
+
+---
+
 ## ✨ Features
 
 ### Audio Recording

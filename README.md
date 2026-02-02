@@ -1,5 +1,7 @@
 # Mediscribe Recorder Browser Extension
 
+<img src="src/assets/icons/128.png" alt="Mediscribe Recorder Icon" width="128" height="128">
+
 ## Description
 This browser extension records audio from browser tabs (and optionally microphone) and uploads the recordings to AWS S3. The extension captures tab audio, mixes it with microphone input if available, and automatically uploads the recording to a configured S3 bucket.
 

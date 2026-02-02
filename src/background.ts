@@ -95,7 +95,7 @@ const startRecordingOffscreen = async (tabId: number) => {
       type: 'stop-recording',
       target: 'offscreen',
     });
-    chrome.action.setIcon({ path: 'icons/not-recording.png' });
+    chrome.action.setIcon({ path: 'assets/icons/32.png' });
     console.log('[Background] Recording stopped, icon updated');
     return;
   }
