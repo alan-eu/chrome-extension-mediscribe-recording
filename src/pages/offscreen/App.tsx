@@ -244,9 +244,11 @@ const App: React.FC = () => {
     splitter.connect(merger, 0, 0);
     splitter.connect(merger, 1, 1);
 
-    // Note: We intentionally do NOT connect source to audioContext.destination
-    // to avoid playing back the audio through speakers (which causes echo/delay)
-    console.log('[Offscreen] Tab audio NOT connected to speakers (no playback)');
+    // Connect tab audio source to destination so the user can continue to hear the tab audio
+    // This is essential for video calls - without this, the captured audio stream is intercepted
+    // and the other person in the call won't be able to hear properly
+    source.connect(audioContext.destination);
+    console.log('[Offscreen] Tab audio connected to speakers for playback');
 
     // If we have microphone access, mix it in
     if (micMedia) {
@@ -313,7 +315,7 @@ const App: React.FC = () => {
     scriptProcessor.connect(silentGain);
     silentGain.connect(audioContext.destination);
 
-    console.log('[Offscreen] Audio processing pipeline connected (no playback)');
+    console.log('[Offscreen] Audio processing pipeline connected');
 
     // Store a flag to indicate recording is active
     const isRecording = { value: true };
