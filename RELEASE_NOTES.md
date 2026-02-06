@@ -1,12 +1,43 @@
-# Mediscribe Recorder v1.0
-
-## 🎉 Initial Release
-
-We're excited to announce the first release of **Mediscribe Recorder**, a Chrome extension designed for healthcare professionals to securely record and upload medical conversations.
+# Mediscribe Recorder - Release Notes
 
 ---
 
-## 🐛 Bug Fixes (v1.0.1)
+## Version 1.1.0 (2026-02-06)
+
+### 🎉 New Features
+- **OPFS Streaming to Disk**: Completely redesigned recording architecture to stream audio directly to disk using Origin Private File System (OPFS)
+  - Supports unlimited recording duration (only limited by disk space, not memory)
+  - No more memory-related crashes or 500MB limits
+  - Continuous streaming eliminates audio cuts between chunks
+- **Face-to-Face Recording Support**: Added dedicated face-to-face consultation recording mode
+  - New page for in-person consultations
+  - Direct microphone recording without requiring an active tab
+  - Accessible via "👥 Face-to-Face Consultation" button in popup
+- **Download Recording Button**: Added ability to download the unencrypted recording after upload
+  - Allows verification of recording quality
+  - Recording persists in OPFS for download even after S3 upload
+
+### 🔧 Technical Improvements
+- Real-time audio processing: Audio is resampled to 16kHz mono and converted to 16-bit PCM on-the-fly
+- Memory efficiency: Audio buffers written immediately to disk instead of accumulating in RAM
+- WAV header written at start and updated at end with correct file size
+- OPFS files persist until browser clears site data or extension is uninstalled
+
+### 📚 Documentation
+- Added face-to-face recording usage instructions
+- Added detailed technical documentation explaining OPFS streaming approach
+- Updated architecture diagrams and flow explanations
+
+### 🐛 Bug Fixes
+- Eliminated "recording database is empty" errors on long recordings
+- Fixed chunking artifacts that caused audio cuts every 30 seconds
+- Improved file handling to prevent "file not found" errors on playback
+
+---
+
+## Version 1.0.1 (2026-02-05)
+
+### 🐛 Bug Fixes
 
 ### Audio Fix for Video Calls
 - **Fixed**: Audio not heard by other participants during recording in video calls
@@ -20,7 +51,9 @@ We're excited to announce the first release of **Mediscribe Recorder**, a Chrome
 
 ---
 
-## ✨ Features
+## Version 1.0.0 (Initial Release)
+
+### ✨ Features
 
 ### Audio Recording
 - **Tab Audio Capture** - Record audio from any browser tab (meetings, video calls, etc.)
