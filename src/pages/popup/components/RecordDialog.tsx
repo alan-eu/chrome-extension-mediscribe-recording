@@ -1,14 +1,33 @@
 import React, { useEffect, useState } from 'react';
 
+// Authorized URL patterns (matching manifest host_permissions)
+const AUTHORIZED_URL_PATTERNS = [
+  /^https?:\/\/localhost(:\d+)?\//,
+  /^https?:\/\/([^/]*\.)?doctolib\.fr\//,
+  /^https?:\/\/meet\.google\.com\//,
+  /^https?:\/\/([^/]*\.)?youtube\.com\//,
+  /^chrome-extension:\/\//  // Allow extension pages (like face-to-face)
+];
+
+const isUrlAuthorized = (url: string): boolean => {
+  return AUTHORIZED_URL_PATTERNS.some(pattern => pattern.test(url));
+};
+
 export const RecordDialog: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [permissionStatus, setPermissionStatus] = useState<string>('');
   const [settingsError, setSettingsError] = useState<string>('');
+  const [currentUrl, setCurrentUrl] = useState<string>('');
+  const [isUrlAllowed, setIsUrlAllowed] = useState<boolean>(true);
+  const [recordingStartTime, setRecordingStartTime] = useState<string | null>(null);
 
   useEffect(() => {
-    chrome.storage.session.get('recording', (result) => {
+    chrome.storage.session.get(['recording', 'recordingStartTime'], (result) => {
       setIsRecording(result.recording);
+      if (result.recordingStartTime) {
+        setRecordingStartTime(result.recordingStartTime);
+      }
     });
 
     // Check microphone permission status
@@ -16,7 +35,20 @@ export const RecordDialog: React.FC = () => {
 
     // Check if settings are configured
     checkSettings();
+
+    // Check if current URL is authorized
+    checkCurrentUrl();
   }, []);
+
+  const checkCurrentUrl = () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const currentTab = tabs[0];
+      if (currentTab?.url) {
+        setCurrentUrl(currentTab.url);
+        setIsUrlAllowed(isUrlAuthorized(currentTab.url));
+      }
+    });
+  };
 
   const checkMicrophonePermission = async () => {
     try {
@@ -86,6 +118,11 @@ export const RecordDialog: React.FC = () => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const currentTab = tabs[0];
         if (currentTab.id) {
+          // Store the recording start time
+          const startTime = new Date().toLocaleTimeString();
+          chrome.storage.session.set({ recordingStartTime: startTime });
+          setRecordingStartTime(startTime);
+
           chrome.runtime.sendMessage({
             action: 'startRecording',
             tabId: currentTab.id,
@@ -113,6 +150,13 @@ export const RecordDialog: React.FC = () => {
   const handleSettingsClick = () => {
     chrome.runtime.openOptionsPage();
   };
+
+  const handleFaceToFaceClick = () => {
+    const faceToFaceUrl = chrome.runtime.getURL('pages/facetoface/index.html');
+    chrome.tabs.create({ url: faceToFaceUrl });
+  };
+
+  const isButtonDisabled = isChecking || (!isRecording && (!!settingsError || !isUrlAllowed));
 
   return (
     <div style={{ padding: '20px', minWidth: '250px' }}>
@@ -145,23 +189,52 @@ export const RecordDialog: React.FC = () => {
         </div>
       )}
 
+      {!isUrlAllowed && !isRecording && (
+        <div style={{ marginBottom: '15px', fontSize: '12px', color: '#f44336', backgroundColor: '#ffebee', padding: '8px', borderRadius: '4px' }}>
+          ⚠️ Recording is not allowed on this page. Please navigate to an authorized site (Doctolib, Google Meet, YouTube, or localhost). Or use the "👥 Face-to-Face Consultation" page below.
+        </div>
+      )}
+
       <div>
         <button
           onClick={handleRecordClick}
-          disabled={isChecking || (!isRecording && !!settingsError)}
+          disabled={isButtonDisabled}
           style={{
             width: '100%',
             padding: '10px',
-            backgroundColor: isRecording ? '#f44336' : (settingsError ? '#ccc' : '#4CAF50'),
+            backgroundColor: isRecording ? '#f44336' : (isButtonDisabled ? '#ccc' : '#4CAF50'),
             color: 'white',
             border: 'none',
             borderRadius: '4px',
-            cursor: (isChecking || (!isRecording && !!settingsError)) ? 'not-allowed' : 'pointer',
-            opacity: (!isRecording && settingsError) ? 0.6 : 1
+            cursor: isButtonDisabled ? 'not-allowed' : 'pointer',
+            opacity: isButtonDisabled && !isRecording ? 0.6 : 1
           }}
         >
           {isChecking ? 'Checking permissions...' :
            isRecording ? 'Stop Recording' : 'Start Recording'}
+        </button>
+        {isRecording && recordingStartTime && (
+          <div style={{ marginTop: '10px', fontSize: '12px', color: '#666', textAlign: 'center' }}>
+            🔴 Recording started at {recordingStartTime}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: '15px', borderTop: '1px solid #eee', paddingTop: '15px' }}>
+        <button
+          onClick={handleFaceToFaceClick}
+          style={{
+            width: '100%',
+            padding: '10px',
+            backgroundColor: '#667eea',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '14px'
+          }}
+        >
+          👥 Face-to-Face Consultation
         </button>
       </div>
 

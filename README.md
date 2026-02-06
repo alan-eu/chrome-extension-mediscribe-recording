@@ -32,6 +32,8 @@ This browser extension records audio from browser tabs (and optionally microphon
 
 ## Usage
 
+### Recording Online Consultations
+
 1. Navigate to any web page with audio (e.g., YouTube, meeting platform)
 2. Click the extension icon
 3. Click "Start Recording"
@@ -40,6 +42,20 @@ This browser extension records audio from browser tabs (and optionally microphon
 6. The upload page opens showing upload progress
 7. Click "🎵 Open Recording" to listen to the recording
 8. The recording is automatically encrypted and uploaded to S3 at: `s3://[your-bucket]/chrome-extension-audio-recordings/[health-professional-id]-[timestamp].wav.enc`
+
+### Recording Face-to-Face Consultations
+
+For in-person medical consultations where there is no online meeting:
+
+1. Click the extension icon in your browser toolbar
+2. Click "👥 Face-to-Face Consultation" to open the dedicated recording page
+3. Click the extension icon again (now on the Face-to-Face page)
+4. Click "Start Recording" to begin capturing audio
+5. Conduct your consultation - the microphone will capture the conversation
+6. Click "Stop Recording" when finished
+7. The recording will be automatically encrypted and uploaded
+
+![Face-to-Face Recording](docs/face-to-face-recording.png)
 
 ## Installation for Developers
 
@@ -118,20 +134,50 @@ Share `mediscribe-recorder.zip` with testers who can follow the "Installation fo
 
 ## Technical Details
 
+### Recording Implementation
+
+The extension uses a **streaming-to-disk** approach for audio recording to handle long consultations without memory limitations:
+
+**File System Storage (OPFS):**
+- Audio is written directly to disk using the **Origin Private File System (OPFS)**
+- OPFS is a browser-managed private storage area that doesn't consume RAM
+- Audio buffers are processed and written to disk in real-time as they're captured
+- This enables unlimited recording duration (only limited by disk space, not memory)
+
+**Why Streaming to Disk:**
+- **Memory efficiency**: Traditional in-memory recording is limited to ~500MB-1GB before browser crashes
+- **No chunking artifacts**: Continuous stream avoids audio cuts between chunks that would occur with chunk-based approaches
+- **Long recordings**: Supports multi-hour consultations without performance degradation
+- **Real-time processing**: Audio is resampled to 16kHz mono and converted to 16-bit PCM on-the-fly
+
+**Technical Flow:**
+1. `ScriptProcessorNode` captures audio buffers (4096 samples at a time)
+2. Each buffer is mixed to mono, resampled to 16kHz, and converted to 16-bit PCM
+3. PCM data is immediately written to OPFS file via `FileSystemWritableFileStream`
+4. WAV header is written at start (placeholder) and updated at end with final size
+5. After recording stops, the file remains in OPFS for upload and download
+6. File persists in OPFS until browser clears site data or extension is uninstalled
+
+**Upload Process:**
+- Recording is read from OPFS as a blob
+- Blob is encrypted client-side using AES-256-CBC
+- Encrypted data is uploaded to S3 via background script
+- Original unencrypted file remains in OPFS for "Download Recording" button
+
 ### Recording Process
 1. Extension creates an offscreen document to access `getUserMedia` API
 2. Captures tab audio using `chrome.tabCapture` API
 3. Optionally captures microphone audio
 4. Uses Web Audio API (`AudioContext`) to mix both streams into mono
 5. Records audio using `ScriptProcessorNode` to capture raw PCM data
-6. Encodes audio to PCM 16-bit 16kHz WAV format
-7. Stores the blob in IndexedDB temporarily
+6. **Streams audio directly to OPFS file** (no memory buffering)
+7. Encodes audio to PCM 16-bit 16kHz WAV format on-the-fly
 8. Closes offscreen document after recording completes to free resources
 
 ### Upload Process
-1. Upload page retrieves blob from IndexedDB
+1. Upload page retrieves blob from OPFS
 2. Encrypts audio using AES-256-CBC with PBKDF2 key derivation (OpenSSL compatible)
-3. Sends encrypted blob data to background script via message passing
+3. Sends encrypted blob data to background script via message passing (using IndexedDB for large files)
 4. Background script uses AWS SDK to upload to S3
 5. File is stored at: `chrome-extension-audio-recordings/[health-professional-id]-[timestamp].wav.enc`
 
@@ -185,7 +231,8 @@ ffplay HP001-2026-01-28T14-30-00-000Z.wav
 - Built with Rollup for bundling
 - Uses TypeScript and React
 - AWS SDK dynamically imported in background script only
-- IndexedDB used for temporary blob storage between offscreen and upload pages
+- OPFS (Origin Private File System) used for audio file storage during and after recording
+- IndexedDB used for metadata and large encrypted data transfer between contexts
 - Removed React StrictMode in upload page to prevent double uploads
 
 ## License

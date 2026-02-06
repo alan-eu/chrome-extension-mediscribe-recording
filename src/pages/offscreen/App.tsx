@@ -44,6 +44,9 @@ const App: React.FC = () => {
   let audioContext: AudioContext | undefined;
   let scriptProcessor: ScriptProcessorNode | undefined;
   let recordedBuffers: Float32Array[] = [];
+  let fileHandle: FileSystemFileHandle | undefined;
+  let writable: FileSystemWritableFileStream | undefined;
+  let wavHeaderWritten = false;
 
   // Test if microphone access is available
   async function testMicrophoneAccess(): Promise<boolean> {
@@ -170,7 +173,8 @@ const App: React.FC = () => {
     return wavBlob;
   }
 
-  async function saveBlobToIndexedDB(blob: Blob): Promise<void> {
+  // Save file handle path to IndexedDB so upload page can access it
+  async function saveFilePathToIndexedDB(filePath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open('RecordingDB', 1);
 
@@ -180,7 +184,7 @@ const App: React.FC = () => {
         const db = (event.target as IDBOpenDBRequest).result;
         const transaction = db.transaction(['recordings'], 'readwrite');
         const objectStore = transaction.objectStore('recordings');
-        const putRequest = objectStore.put(blob, 'latest');
+        const putRequest = objectStore.put(filePath, 'filePath');
 
         putRequest.onsuccess = () => resolve();
         putRequest.onerror = () => reject(putRequest.error);
@@ -201,6 +205,27 @@ const App: React.FC = () => {
     if (recorder?.state === 'recording') {
       console.error('[Offscreen] Recording already in progress, aborting');
       throw new Error('Called startRecording while recording is in progress.');
+    }
+
+    // Use File System Access API with temporary directory
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `recording_${timestamp}.wav`;
+
+      console.log('[Offscreen] Getting temporary directory access');
+
+      // Get OPFS (Origin Private File System) - a private temporary file system
+      const opfsRoot = await navigator.storage.getDirectory();
+
+      // Create or get the file in OPFS
+      fileHandle = await opfsRoot.getFileHandle(fileName, { create: true });
+      writable = await fileHandle.createWritable();
+      wavHeaderWritten = false;
+
+      console.log('[Offscreen] File created in temporary storage:', fileName);
+    } catch (error) {
+      console.error('[Offscreen] Failed to create temporary file:', error);
+      throw new Error('Failed to create temporary file for recording');
     }
 
     console.log('[Offscreen] Capturing tab audio stream');
@@ -267,17 +292,24 @@ const App: React.FC = () => {
     const gainNode = audioContext.createGain();
     merger.connect(gainNode);
 
-    // Create script processor to capture audio data
+    // Create script processor to capture audio data and stream to file
     const bufferSize = 4096;
     console.log('[Offscreen] Creating ScriptProcessorNode with buffer size:', bufferSize);
     scriptProcessor = audioContext.createScriptProcessor(bufferSize, 2, 1);
     recordedBuffers = [];
-    console.log('[Offscreen] Audio buffer collection initialized');
+    console.log('[Offscreen] Audio streaming to file initialized');
 
     let processedBufferCount = 0;
+    let totalSamples = 0;
     const logInterval = 500; // Log every 500 buffers (~45 seconds at 4096 buffer size and 48kHz)
+    const targetSampleRate = 16000; // 16kHz mono
 
-    scriptProcessor.onaudioprocess = (event) => {
+    // Write placeholder WAV header (we'll update it at the end with correct size)
+    const placeholderHeader = createWavHeader(0, targetSampleRate, 1);
+    await writable!.write(placeholderHeader);
+    console.log('[Offscreen] Placeholder WAV header written to file');
+
+    scriptProcessor.onaudioprocess = async (event) => {
       const inputBuffer = event.inputBuffer;
       const outputBuffer = event.outputBuffer;
 
@@ -290,13 +322,27 @@ const App: React.FC = () => {
         mono[i] = (left[i] + right[i]) / 2;
       }
 
-      recordedBuffers.push(new Float32Array(mono));
+      // Resample to target rate
+      const resampled = resampleAudio(mono, audioContext!.sampleRate, targetSampleRate);
+
+      // Convert to 16-bit PCM
+      const pcmData = floatTo16BitPCM(resampled);
+
+      // Write directly to file
+      try {
+        await writable!.write(new Uint8Array(pcmData.buffer));
+        totalSamples += resampled.length;
+      } catch (error) {
+        console.error('[Offscreen] Failed to write audio data to file:', error);
+      }
+
       processedBufferCount++;
 
       // Log progress periodically
       if (processedBufferCount % logInterval === 0) {
-        const recordedSeconds = ((processedBufferCount * bufferSize) / audioContext!.sampleRate).toFixed(1);
-        console.log('[Offscreen] Recording progress:', recordedSeconds, 'seconds,', recordedBuffers.length, 'buffers captured');
+        const recordedSeconds = (totalSamples / targetSampleRate).toFixed(1);
+        const fileSizeMB = ((totalSamples * 2 + 44) / (1024 * 1024)).toFixed(1); // 2 bytes per sample + header
+        console.log('[Offscreen] Recording progress:', recordedSeconds, 'seconds, file size:', fileSizeMB, 'MB');
       }
 
       // Copy input to output for passthrough
@@ -330,8 +376,7 @@ const App: React.FC = () => {
       }
       isRecording.value = false;
 
-      console.log('[Offscreen] Stopping recording, total buffers captured:', recordedBuffers.length);
-      const blob = createWavBlob(recordedBuffers, audioContext!.sampleRate);
+      console.log('[Offscreen] Stopping recording, total samples:', totalSamples);
 
       // delete local state of recording
       console.log('[Offscreen] Updating recording state in background');
@@ -341,20 +386,41 @@ const App: React.FC = () => {
       });
 
       try {
-        // Save blob to IndexedDB
-        console.log('[Offscreen] Saving recording to IndexedDB, size:', blob.size, 'bytes');
-        await saveBlobToIndexedDB(blob);
-        console.log('[Offscreen] Recording saved to IndexedDB successfully');
+        // Close the writable stream
+        if (writable) {
+          await writable.close();
+          console.log('[Offscreen] File stream closed');
+        }
+
+        // Now update the WAV header with the correct file size
+        if (fileHandle) {
+          console.log('[Offscreen] Updating WAV header with final size');
+          const finalWritable = await fileHandle.createWritable({ keepExistingData: true });
+
+          // Calculate data size in bytes (2 bytes per sample for 16-bit PCM)
+          const dataSize = totalSamples * 2;
+          const header = createWavHeader(dataSize, 16000, 1);
+
+          // Write the corrected header at the beginning
+          await finalWritable.seek(0);
+          await finalWritable.write(header);
+          await finalWritable.close();
+
+          console.log('[Offscreen] WAV header updated with final size:', dataSize, 'bytes');
+
+          // Save file path to IndexedDB for upload page
+          await saveFilePathToIndexedDB(fileHandle.name);
+        }
+
+        console.log('[Offscreen] Recording saved to file successfully');
 
         // Open upload page which will handle the S3 upload
         const uploadPageUrl = chrome.runtime.getURL('pages/upload/index.html');
         console.log('[Offscreen] Opening upload page:', uploadPageUrl);
         window.open(uploadPageUrl, '_blank');
       } catch (error) {
-        console.error('[Offscreen] Failed to save blob to IndexedDB:', error);
-        // Fallback to just opening the blob
-        console.log('[Offscreen] Falling back to direct blob URL');
-        window.open(URL.createObjectURL(blob), '_blank');
+        console.error('[Offscreen] Failed to finalize recording file:', error);
+        alert('Failed to save recording. Error: ' + error);
       }
 
       // Clean up all media streams and audio context

@@ -187,12 +187,73 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === 'close-offscreen') {
     console.log('[Background] Close offscreen document requested');
     closeOffscreenDocument();
+  } else if (message.action === 'recording-auto-stopped') {
+    console.log('[Background] Recording auto-stopped due to:', message.reason);
+    console.log('[Background] Recording duration before auto-stop:', message.duration, 'seconds');
+    // Update recording state
+    chrome.storage.session.set({ recording: false });
+    // Store the auto-stop reason so the popup can display it
+    chrome.storage.session.set({ 
+      recordingAutoStopped: true,
+      recordingAutoStopReason: message.reason,
+      recordingAutoStopDuration: message.duration
+    });
   } else if (message.action === 'upload-to-s3') {
     console.log('[Background] Upload to S3 requested, data size:', message.data?.arrayBuffer?.length || 0, 'bytes');
     handleS3Upload(message.data, sendResponse);
     return true; // Keep the channel open for async response
   }
 });
+
+async function getEncryptedDataFromIndexedDB(): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open('UploadDB', 1);
+
+    request.onerror = () => {
+      reject(new Error('Failed to open UploadDB'));
+    };
+
+    request.onupgradeneeded = (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains('uploads')) {
+        db.createObjectStore('uploads');
+      }
+    };
+
+    request.onsuccess = async (event) => {
+      const db = (event.target as IDBOpenDBRequest).result;
+      const transaction = db.transaction(['uploads'], 'readwrite');
+      const store = transaction.objectStore('uploads');
+
+      const getRequest = store.get('pending-upload');
+
+      getRequest.onsuccess = async () => {
+        const blob = getRequest.result;
+        if (!blob) {
+          reject(new Error('No pending upload data found in IndexedDB'));
+          return;
+        }
+
+        console.log('[Background] Retrieved encrypted data from IndexedDB, size:', blob.size, 'bytes');
+
+        // Convert Blob to ArrayBuffer then to Uint8Array
+        const arrayBuffer = await blob.arrayBuffer();
+        const buffer = new Uint8Array(arrayBuffer);
+
+        // Clean up the stored data
+        const deleteTransaction = db.transaction(['uploads'], 'readwrite');
+        const deleteStore = deleteTransaction.objectStore('uploads');
+        deleteStore.delete('pending-upload');
+
+        resolve(buffer);
+      };
+
+      getRequest.onerror = () => {
+        reject(new Error('Failed to retrieve encrypted data from IndexedDB'));
+      };
+    };
+  });
+}
 
 async function handleS3Upload(data: any, sendResponse: (response: any) => void) {
   const startTime = performance.now();
@@ -201,6 +262,7 @@ async function handleS3Upload(data: any, sendResponse: (response: any) => void) 
     console.log('[Background] ===== S3 Upload Process Started =====');
     console.log('[Background] S3 Key:', data.s3Key);
     console.log('[Background] Content Type:', data.contentType);
+    console.log('[Background] Using IndexedDB:', data.useIndexedDB || false);
 
     // Get AWS credentials from storage
     console.log('[Background] Fetching AWS credentials from storage');
@@ -231,9 +293,16 @@ async function handleS3Upload(data: any, sendResponse: (response: any) => void) 
     });
     console.log('[Background] S3 client initialized successfully');
 
-    // Convert array back to Uint8Array
-    console.log('[Background] Converting array data to Uint8Array buffer');
-    const buffer = new Uint8Array(data.arrayBuffer);
+    // Get the buffer - either from IndexedDB or from the message data (for backward compatibility)
+    let buffer: Uint8Array;
+    if (data.useIndexedDB) {
+      console.log('[Background] Reading encrypted data from IndexedDB');
+      buffer = await getEncryptedDataFromIndexedDB();
+    } else {
+      // Legacy support: convert array back to Uint8Array
+      console.log('[Background] Converting array data to Uint8Array buffer');
+      buffer = new Uint8Array(data.arrayBuffer);
+    }
     console.log('[Background] Buffer size:', buffer.length, 'bytes');
 
     console.log('[Background] Creating PutObjectCommand');
