@@ -1,3 +1,31 @@
+// DOMParser polyfill for Service Worker environment (required by AWS SDK)
+// Service Workers don't have DOM APIs, but AWS SDK needs DOMParser for XML parsing
+if (typeof DOMParser === 'undefined') {
+  (globalThis as any).DOMParser = class DOMParser {
+    parseFromString(str: string, type: string): Document {
+      // Minimal XML parser for AWS SDK responses
+      const doc = {
+        getElementsByTagName: (tagName: string) => {
+          const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, 'gi');
+          const matches: { textContent: string }[] = [];
+          let match;
+          while ((match = regex.exec(str)) !== null) {
+            matches.push({ textContent: match[1] });
+          }
+          return matches;
+        },
+        documentElement: {
+          nodeName: 'root',
+          getAttribute: () => null,
+        },
+        querySelector: () => null,
+        querySelectorAll: () => [],
+      };
+      return doc as unknown as Document;
+    }
+  };
+}
+
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 
 // Check if microphone permission is available
